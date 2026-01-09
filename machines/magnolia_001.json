@@ -1,3 +1,4 @@
 {
-  "active_app": "international-delight"
+  "active_app": "international-delight",
+  "force_restart": true
 }
