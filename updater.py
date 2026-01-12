@@ -14,15 +14,16 @@ LOG = f"{BASE}/logs/magnolia.log"
 MID_FILE = "/etc/magnolia_id"
 
 def log(msg):
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
     with open(LOG, "a") as f:
         f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
 
 def run(cmd, cwd=None):
-    subprocess.run(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(cmd, cwd=cwd, check=False)
 
 log("Updater started")
 
-# local override
+# Local override
 if os.path.exists(OVERRIDE) and os.path.getsize(OVERRIDE) > 0:
     log("Local override active")
     exit(0)
@@ -33,6 +34,7 @@ if not os.path.exists(MID_FILE):
 
 machine_id = open(MID_FILE).read().strip()
 
+# Pull control repo
 run(["git", "pull"], cwd=CONTROL)
 
 apps = json.load(open(f"{CONTROL}/apps.json"))
@@ -42,18 +44,23 @@ cfg = json.load(open(cfg_path)) if os.path.exists(cfg_path) else json.load(open(
 
 app = cfg["app"]
 log(f"Config app value = {app}")
+
 repo = apps[app]["repo"]
+branch = apps[app].get("branch")
 
 app_dir = f"{APPS}/{app}"
 
 if not os.path.exists(app_dir):
     log(f"Cloning {app}")
-    run(["git", "clone", repo, app_dir])
+    if branch:
+        run(["git", "clone", "-b", branch, repo, app_dir])
+    else:
+        run(["git", "clone", repo, app_dir])
 else:
     log(f"Updating {app}")
     run(["git", "pull"], cwd=app_dir)
 
-if os.path.exists(ACTIVE) or os.path.islink(ACTIVE):
+if os.path.islink(ACTIVE) or os.path.exists(ACTIVE):
     os.unlink(ACTIVE)
 
 os.symlink(app_dir, ACTIVE)
