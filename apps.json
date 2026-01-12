@@ -5,6 +5,7 @@
   },
   ,
   "Magnolia-International-Delight-UI": {
-    "repo": "git@github.com:Magnolia-Beverages/Magnolia-International-Delight-UI.git"
+    "repo": "git@github.com:Magnolia-Beverages/Magnolia-International-Delight-UI.git",
+    "branch": "Code_Cleanup"
   }
 }
