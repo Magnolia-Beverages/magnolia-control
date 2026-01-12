@@ -2,5 +2,9 @@
   "international-delight": {
     "repo": "git@github.com:Magnolia-Beverages/International-Delight-UI.git",
     "branch": "main"
+  },
+  ,
+  "Magnolia-International-Delight-UI": {
+    "repo": "git@github.com:Magnolia-Beverages/Magnolia-International-Delight-UI.git"
   }
 }
