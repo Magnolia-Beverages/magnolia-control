@@ -35,6 +35,8 @@ if not os.path.exists(MID_FILE):
 machine_id = open(MID_FILE).read().strip()
 
 # Pull control repo
+run(["git", "fetch"], cwd=CONTROL)
+run(["git", "reset", "--hard", "origin/main"], cwd=CONTROL)
 run(["git", "pull"], cwd=CONTROL)
 
 apps = json.load(open(f"{CONTROL}/apps.json"))
