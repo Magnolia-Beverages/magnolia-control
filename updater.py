@@ -41,6 +41,7 @@ cfg_path = f"{CONTROL}/machines/{machine_id}.json"
 cfg = json.load(open(cfg_path)) if os.path.exists(cfg_path) else json.load(open(f"{CONTROL}/default.json"))
 
 app = cfg["app"]
+log(f"Config app value = {app}")
 repo = apps[app]["repo"]
 
 app_dir = f"{APPS}/{app}"
