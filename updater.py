@@ -3,7 +3,7 @@
 import json
 import os
 import subprocess
-from datetime import datetime
+from datetime import datetime, time
 
 BASE = "/home/pi"
 CONTROL = f"{BASE}/magnolia-control"
@@ -21,6 +21,20 @@ def log(msg):
 def run(cmd, cwd=None):
     subprocess.run(cmd, cwd=cwd, check=False)
 
+def within_update_window(cfg):
+    window = cfg.get("update_window")
+    if not window:
+        return True
+
+    now = datetime.now().time()
+    start = datetime.strptime(window["start"], "%H:%M").time()
+    end = datetime.strptime(window["end"], "%H:%M").time()
+
+    if start <= end:
+        return start <= now <= end
+    else:
+        return now >= start or now <= end
+
 log("Updater started")
 
 # Local override
@@ -34,7 +48,7 @@ if not os.path.exists(MID_FILE):
 
 machine_id = open(MID_FILE).read().strip()
 
-# Pull control repo
+# Force control repo to match GitHub exactly
 run(["git", "fetch"], cwd=CONTROL)
 run(["git", "reset", "--hard", "origin/main"], cwd=CONTROL)
 run(["git", "pull"], cwd=CONTROL)
@@ -43,6 +57,16 @@ apps = json.load(open(f"{CONTROL}/apps.json"))
 
 cfg_path = f"{CONTROL}/machines/{machine_id}.json"
 cfg = json.load(open(cfg_path)) if os.path.exists(cfg_path) else json.load(open(f"{CONTROL}/default.json"))
+
+# Auto update gate
+if not cfg.get("auto_update", True):
+    log("Auto update disabled by GitHub")
+    exit(0)
+
+# Time window gate
+if not within_update_window(cfg):
+    log("Outside update window, skipping")
+    exit(0)
 
 app = cfg["app"]
 log(f"Config app value = {app}")
@@ -67,8 +91,8 @@ if os.path.islink(ACTIVE) or os.path.exists(ACTIVE):
 
 os.symlink(app_dir, ACTIVE)
 log(f"Active app set to {app}")
+
+# Restart request
 if cfg.get("force_restart"):
     log("Force restart requested from GitHub")
     run(["sudo", "systemctl", "restart", "magnolia.service"])
-
-
