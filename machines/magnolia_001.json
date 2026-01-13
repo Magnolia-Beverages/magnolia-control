@@ -5,5 +5,5 @@
     "start": "14:00",
     "end": "15:00"
   },
-  "force_restart": true
+  "force_restart": false
 }
