@@ -67,3 +67,7 @@ if os.path.islink(ACTIVE) or os.path.exists(ACTIVE):
 
 os.symlink(app_dir, ACTIVE)
 log(f"Active app set to {app}")
+if cfg.get("force_restart"):
+    log("Force restart requested from GitHub")
+    run(["systemctl", "restart", "magnolia.service"])
+
