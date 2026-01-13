@@ -19,80 +19,84 @@ def log(msg):
         f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
 
 def run(cmd, cwd=None):
-    subprocess.run(cmd, cwd=cwd, check=False)
+    return subprocess.run(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-def within_update_window(cfg):
-    window = cfg.get("update_window")
-    if not window:
-        return True
-
-    now = datetime.now().time()
-    start = datetime.strptime(window["start"], "%H:%M").time()
-    end = datetime.strptime(window["end"], "%H:%M").time()
-
-    if start <= end:
-        return start <= now <= end
-    else:
-        return now >= start or now <= end
+def repo_has_changes(path, branch="main"):
+    run(["git", "fetch"], cwd=path)
+    result = subprocess.run(
+        ["git", "diff", "--quiet", f"HEAD", f"origin/{branch}"],
+        cwd=path
+    )
+    return result.returncode != 0  # True if changes exist
 
 log("Updater started")
 
-# Local override
+# ─── Local override ─────────────────────────────────────
 if os.path.exists(OVERRIDE) and os.path.getsize(OVERRIDE) > 0:
-    log("Local override active")
+    log("Local override active, skipping")
     exit(0)
 
+# ─── Machine ID ─────────────────────────────────────────
 if not os.path.exists(MID_FILE):
     log("Machine ID missing")
     exit(1)
 
 machine_id = open(MID_FILE).read().strip()
 
-# Force control repo to match GitHub exactly
-run(["git", "fetch"], cwd=CONTROL)
-run(["git", "reset", "--hard", "origin/main"], cwd=CONTROL)
-run(["git", "pull"], cwd=CONTROL)
+# ─── Pull control repo ──────────────────────────────────
+control_changed = repo_has_changes(CONTROL)
+if control_changed:
+    log("Control repo changed, syncing")
+    run(["git", "reset", "--hard", "origin/main"], cwd=CONTROL)
+else:
+    log("Control repo unchanged")
 
 apps = json.load(open(f"{CONTROL}/apps.json"))
 
 cfg_path = f"{CONTROL}/machines/{machine_id}.json"
 cfg = json.load(open(cfg_path)) if os.path.exists(cfg_path) else json.load(open(f"{CONTROL}/default.json"))
 
-# Auto update gate
-if not cfg.get("auto_update", True):
-    log("Auto update disabled by GitHub")
-    exit(0)
-
-# Time window gate
-if not within_update_window(cfg):
-    log("Outside update window, skipping")
-    exit(0)
-
 app = cfg["app"]
-log(f"Config app value = {app}")
+log(f"Configured app = {app}")
 
 repo = apps[app]["repo"]
-branch = apps[app].get("branch")
-
+branch = apps[app].get("branch", "main")
 app_dir = f"{APPS}/{app}"
 
+app_changed = False
+app_switched = False
+
+# ─── App repo handling ──────────────────────────────────
 if not os.path.exists(app_dir):
     log(f"Cloning {app}")
-    if branch:
-        run(["git", "clone", "-b", branch, repo, app_dir])
-    else:
-        run(["git", "clone", repo, app_dir])
+    run(["git", "clone", "-b", branch, repo, app_dir])
+    app_changed = True
 else:
-    log(f"Updating {app}")
-    run(["git", "pull"], cwd=app_dir)
+    if repo_has_changes(app_dir, branch):
+        log(f"App repo {app} changed, pulling")
+        run(["git", "reset", "--hard", f"origin/{branch}"], cwd=app_dir)
+        app_changed = True
+    else:
+        log(f"App repo {app} unchanged")
 
-if os.path.islink(ACTIVE) or os.path.exists(ACTIVE):
-    os.unlink(ACTIVE)
+# ─── Active symlink ─────────────────────────────────────
+if not os.path.islink(ACTIVE) or os.readlink(ACTIVE) != app_dir:
+    if os.path.exists(ACTIVE):
+        os.unlink(ACTIVE)
+    os.symlink(app_dir, ACTIVE)
+    log(f"Active app switched to {app}")
+    app_switched = True
 
-os.symlink(app_dir, ACTIVE)
-log(f"Active app set to {app}")
+# ─── Restart decision ───────────────────────────────────
+restart_required = (
+    control_changed
+    or app_changed
+    or app_switched
+    or cfg.get("force_restart", False)
+)
 
-# Restart request
-if cfg.get("force_restart"):
-    log("Force restart requested from GitHub")
+if restart_required:
+    log("Restarting Magnolia service")
     run(["sudo", "systemctl", "restart", "magnolia.service"])
+else:
+    log("No restart needed")
