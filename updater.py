@@ -21,40 +21,62 @@ def log(msg):
 def run(cmd, cwd=None):
     return subprocess.run(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-def repo_has_changes(path, branch="main"):
+def repo_has_changes(path, branch):
     run(["git", "fetch"], cwd=path)
     result = subprocess.run(
-        ["git", "diff", "--quiet", f"HEAD", f"origin/{branch}"],
+        ["git", "diff", "--quiet", "HEAD", f"origin/{branch}"],
         cwd=path
     )
-    return result.returncode != 0  # True if changes exist
+    return result.returncode != 0
+
+def inside_update_window(cfg):
+    window = cfg.get("update_window")
+    if not window:
+        return True
+
+    now = datetime.now().time()
+    start = time.fromisoformat(window["start"])
+    end = time.fromisoformat(window["end"])
+
+    return start <= now <= end
 
 log("Updater started")
 
-# ─── Local override ─────────────────────────────────────
+# ─── LOCAL OVERRIDE ─────────────────────────────────────
 if os.path.exists(OVERRIDE) and os.path.getsize(OVERRIDE) > 0:
     log("Local override active, skipping")
     exit(0)
 
-# ─── Machine ID ─────────────────────────────────────────
+# ─── MACHINE ID ─────────────────────────────────────────
 if not os.path.exists(MID_FILE):
     log("Machine ID missing")
     exit(1)
 
 machine_id = open(MID_FILE).read().strip()
 
-# ─── Pull control repo ──────────────────────────────────
-control_changed = repo_has_changes(CONTROL)
+# ─── CONTROL REPO CHECK ─────────────────────────────────
+control_changed = repo_has_changes(CONTROL, "main")
 if control_changed:
     log("Control repo changed, syncing")
     run(["git", "reset", "--hard", "origin/main"], cwd=CONTROL)
 else:
     log("Control repo unchanged")
 
+# Reload config AFTER control sync
 apps = json.load(open(f"{CONTROL}/apps.json"))
 
 cfg_path = f"{CONTROL}/machines/{machine_id}.json"
 cfg = json.load(open(cfg_path)) if os.path.exists(cfg_path) else json.load(open(f"{CONTROL}/default.json"))
+
+# ─── AUTO UPDATE MASTER SWITCH ──────────────────────────
+if not cfg.get("auto_update", True):
+    log("Auto update disabled, exiting")
+    exit(0)
+
+# ─── UPDATE WINDOW ──────────────────────────────────────
+if not inside_update_window(cfg):
+    log("Outside update window, skipping")
+    exit(0)
 
 app = cfg["app"]
 log(f"Configured app = {app}")
@@ -66,7 +88,7 @@ app_dir = f"{APPS}/{app}"
 app_changed = False
 app_switched = False
 
-# ─── App repo handling ──────────────────────────────────
+# ─── APP REPO HANDLING ──────────────────────────────────
 if not os.path.exists(app_dir):
     log(f"Cloning {app}")
     run(["git", "clone", "-b", branch, repo, app_dir])
@@ -79,7 +101,7 @@ else:
     else:
         log(f"App repo {app} unchanged")
 
-# ─── Active symlink ─────────────────────────────────────
+# ─── ACTIVE SYMLINK ─────────────────────────────────────
 if not os.path.islink(ACTIVE) or os.readlink(ACTIVE) != app_dir:
     if os.path.exists(ACTIVE):
         os.unlink(ACTIVE)
@@ -87,7 +109,7 @@ if not os.path.islink(ACTIVE) or os.readlink(ACTIVE) != app_dir:
     log(f"Active app switched to {app}")
     app_switched = True
 
-# ─── Restart decision ───────────────────────────────────
+# ─── RESTART DECISION ───────────────────────────────────
 restart_required = (
     control_changed
     or app_changed
