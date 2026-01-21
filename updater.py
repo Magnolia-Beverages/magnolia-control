@@ -19,22 +19,32 @@ def log(msg):
         f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
 
 def run(cmd, cwd=None):
-    subprocess.run(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return subprocess.run(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def repo_has_changes(path, branch):
+    run(["git", "fetch"], cwd=path)
+    result = subprocess.run(
+        ["git", "diff", "--quiet", "HEAD", f"origin/{branch}"],
+        cwd=path
+    )
+    return result.returncode != 0
 
 def inside_update_window(cfg):
     window = cfg.get("update_window")
     if not window:
         return True
+
     now = datetime.now().time()
     start = time.fromisoformat(window["start"])
     end = time.fromisoformat(window["end"])
+
     return start <= now <= end
 
 log("Updater started")
 
 # ─── LOCAL OVERRIDE ─────────────────────────────────────
 if os.path.exists(OVERRIDE) and os.path.getsize(OVERRIDE) > 0:
-    log("Local override active, skipping all updates")
+    log("Local override active, skipping")
     exit(0)
 
 # ─── MACHINE ID ─────────────────────────────────────────
@@ -44,12 +54,15 @@ if not os.path.exists(MID_FILE):
 
 machine_id = open(MID_FILE).read().strip()
 
-# ─── CONTROL REPO SYNC (ALWAYS HARD SYNC) ───────────────
-log("Syncing control repo")
-run(["git", "fetch"], cwd=CONTROL)
-run(["git", "reset", "--hard", "origin/main"], cwd=CONTROL)
+# ─── CONTROL REPO CHECK ─────────────────────────────────
+control_changed = repo_has_changes(CONTROL, "main")
+if control_changed:
+    log("Control repo changed, syncing")
+    run(["git", "reset", "--hard", "origin/main"], cwd=CONTROL)
+else:
+    log("Control repo unchanged")
 
-# Reload config AFTER sync
+# Reload config AFTER control sync
 apps = json.load(open(f"{CONTROL}/apps.json"))
 
 cfg_path = f"{CONTROL}/machines/{machine_id}.json"
@@ -57,7 +70,7 @@ cfg = json.load(open(cfg_path)) if os.path.exists(cfg_path) else json.load(open(
 
 # ─── AUTO UPDATE MASTER SWITCH ──────────────────────────
 if not cfg.get("auto_update", True):
-    log("Auto update disabled by config")
+    log("Auto update disabled, exiting")
     exit(0)
 
 # ─── UPDATE WINDOW ──────────────────────────────────────
@@ -65,24 +78,28 @@ if not inside_update_window(cfg):
     log("Outside update window, skipping")
     exit(0)
 
-# ─── APP CONFIG ─────────────────────────────────────────
 app = cfg["app"]
+log(f"Configured app = {app}")
+
 repo = apps[app]["repo"]
 branch = apps[app].get("branch", "main")
 app_dir = f"{APPS}/{app}"
 
-restart_required = False
+app_changed = False
+app_switched = False
 
-# ─── APP REPO SYNC (FORCE, NO DIFF) ─────────────────────
+# ─── APP REPO HANDLING ──────────────────────────────────
 if not os.path.exists(app_dir):
-    log(f"Cloning app {app}")
+    log(f"Cloning {app}")
     run(["git", "clone", "-b", branch, repo, app_dir])
-    restart_required = True
+    app_changed = True
 else:
-    log(f"Force syncing app {app}")
-    run(["git", "fetch"], cwd=app_dir)
-    run(["git", "reset", "--hard", f"origin/{branch}"], cwd=app_dir)
-    restart_required = True
+    if repo_has_changes(app_dir, branch):
+        log(f"App repo {app} changed, pulling")
+        run(["git", "reset", "--hard", f"origin/{branch}"], cwd=app_dir)
+        app_changed = True
+    else:
+        log(f"App repo {app} unchanged")
 
 # ─── ACTIVE SYMLINK ─────────────────────────────────────
 if not os.path.islink(ACTIVE) or os.readlink(ACTIVE) != app_dir:
@@ -90,10 +107,17 @@ if not os.path.islink(ACTIVE) or os.readlink(ACTIVE) != app_dir:
         os.unlink(ACTIVE)
     os.symlink(app_dir, ACTIVE)
     log(f"Active app switched to {app}")
-    restart_required = True
+    app_switched = True
 
 # ─── RESTART DECISION ───────────────────────────────────
-if restart_required or cfg.get("force_restart", False):
+restart_required = (
+    control_changed
+    or app_changed
+    or app_switched
+    or cfg.get("force_restart", False)
+)
+
+if restart_required:
     log("Restarting Magnolia service")
     run(["sudo", "systemctl", "restart", "magnolia.service"])
 else:
