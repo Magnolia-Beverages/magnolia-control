@@ -1,9 +1,9 @@
 {
   "app": "international-delight",
-  "auto_update": false,
+  "auto_update": true,
   "update_window": {
-    "start": "14:00",
-    "end": "15:00"
+    "start": "9:00",
+    "end": "10:00"
   },
   "force_restart": false
 }
