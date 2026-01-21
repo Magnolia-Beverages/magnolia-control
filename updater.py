@@ -74,7 +74,7 @@ if not cfg.get("auto_update", True):
     exit(0)
 
 # ─── UPDATE WINDOW ──────────────────────────────────────
-if not inside_update_window(cfg):
+if not inside_update_window(cfg) and not cfg.get("force_restart", False):
     log("Outside update window, skipping")
     exit(0)
 
