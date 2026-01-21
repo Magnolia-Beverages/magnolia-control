@@ -3,7 +3,7 @@
   "auto_update": true,
   "update_window": {
     "start": "09:00",
-    "end": "12:00"
+    "end": "13:00"
   },
   "force_restart": false
 }
