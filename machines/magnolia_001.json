@@ -2,7 +2,7 @@
   "app": "international-delight",
   "auto_update": true,
   "update_window": {
-    "start": "9:00",
+    "start": "09:00",
     "end": "11:00"
   },
   "force_restart": true
