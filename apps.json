@@ -6,5 +6,9 @@
   "Magnolia-International-Delight-UI": {
     "repo": "git@github.com:Magnolia-Beverages/Magnolia-International-Delight-UI.git",
     "branch": "Code_Cleanup"
+  },
+  "Silk-UI": {
+    "repo": "https://github.com/Magnolia-Beverages/Silk-UI.git",
+    "branch": "main"
   }
 }
