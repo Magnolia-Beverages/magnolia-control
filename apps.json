@@ -8,7 +8,7 @@
     "branch": "Code_Cleanup"
   },
   "Silk-UI": {
-    "repo": "https://github.com/Magnolia-Beverages/Silk-UI.git",
+    "repo": "git@github.com:Magnolia-Beverages/Silk-UI.git",
     "branch": "main"
   }
 }
