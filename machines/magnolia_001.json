@@ -1,9 +1,9 @@
 {
-  "app": "Silk-UI",
+  "app": "international-delight",
   "auto_update": true,
   "update_window": {
     "start": "09:00",
-    "end": "15:00"
+    "end": "16:00"
   },
   "force_restart": false
 }
